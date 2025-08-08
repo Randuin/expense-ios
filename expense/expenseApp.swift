@@ -10,9 +10,11 @@ import SwiftData
 
 @main
 struct expenseApp: App {
+    @State private var showLaunchScreen = true
+    
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
-            Item.self,
+            Receipt.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
@@ -25,7 +27,22 @@ struct expenseApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ZStack {
+                MainTabView()
+                    .opacity(showLaunchScreen ? 0 : 1)
+                
+                if showLaunchScreen {
+                    LaunchScreenView()
+                        .transition(.opacity)
+                        .onAppear {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                                withAnimation(.easeOut(duration: 0.5)) {
+                                    showLaunchScreen = false
+                                }
+                            }
+                        }
+                }
+            }
         }
         .modelContainer(sharedModelContainer)
     }
