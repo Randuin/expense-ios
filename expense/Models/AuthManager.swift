@@ -10,7 +10,9 @@ class AuthManager: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
     
-    private let baseURL = "http://localhost:3000"
+    private var baseURL: String {
+        return AppConfig.currentBaseURL
+    }
     private let keychain = KeychainHelper.shared
     
     init() {
@@ -80,7 +82,15 @@ class AuthManager: ObservableObject {
             
             let authResponse = try JSONDecoder().decode(AuthResponse.self, from: data)
             
-            // Store tokens securely (tokens come from cookies, so they're handled by the backend)
+            // Store tokens securely in keychain
+            if let accessToken = authResponse.accessToken,
+               let refreshToken = authResponse.refreshToken {
+                keychain.storeTokens(
+                    accessToken: accessToken,
+                    refreshToken: refreshToken
+                )
+            }
+            
             self.user = authResponse.user
             self.isAuthenticated = true
             
@@ -131,15 +141,26 @@ class AuthManager: ObservableObject {
             request.httpMethod = "POST"
             request.setValue("Bearer \(refreshToken)", forHTTPHeaderField: "Authorization")
             
-            let (data, _) = try await URLSession.shared.data(for: request)
-            let response = try JSONDecoder().decode(AuthResponse.self, from: data)
+            let (data, response) = try await URLSession.shared.data(for: request)
             
-            keychain.storeTokens(
-                accessToken: response.accessToken,
-                refreshToken: response.refreshToken
-            )
+            guard let httpResponse = response as? HTTPURLResponse,
+                  httpResponse.statusCode == 200 else {
+                signOut()
+                return
+            }
             
-            self.user = response.user
+            let authResponse = try JSONDecoder().decode(AuthResponse.self, from: data)
+            
+            // Update tokens if provided
+            if let accessToken = authResponse.accessToken,
+               let refreshToken = authResponse.refreshToken {
+                keychain.storeTokens(
+                    accessToken: accessToken,
+                    refreshToken: refreshToken
+                )
+            }
+            
+            self.user = authResponse.user
             self.isAuthenticated = true
         } catch {
             signOut()
@@ -163,9 +184,28 @@ class AuthManager: ObservableObject {
     }
     
     func signOut() {
+        // Sign out from Google
+        GIDSignIn.sharedInstance.signOut()
+        
+        // Clear local tokens and state
         keychain.clearTokens()
         user = nil
         isAuthenticated = false
+        
+        // Optional: Call backend logout endpoint to invalidate server-side session
+        Task {
+            do {
+                var request = URLRequest(url: URL(string: "\(baseURL)/api/auth/logout")!)
+                request.httpMethod = "POST"
+                if let token = keychain.getAccessToken() {
+                    request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                }
+                _ = try await URLSession.shared.data(for: request)
+            } catch {
+                // Logout error is not critical, local state is already cleared
+                print("Backend logout failed: \(error)")
+            }
+        }
     }
 }
 

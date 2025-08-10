@@ -37,6 +37,12 @@ struct MainTabView: View {
                 Label("History", systemImage: "clock.arrow.circlepath")
             }
             .tag(2)
+            
+            SettingsView()
+                .tabItem {
+                    Label("Settings", systemImage: "gear")
+                }
+                .tag(3)
         }
         .accentColor(.blue)
         .overlay(alignment: .top) {

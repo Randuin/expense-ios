@@ -3,7 +3,9 @@ import Foundation
 class APIClient {
     static let shared = APIClient()
     
-    private let baseURL = "http://localhost:3000"
+    private var baseURL: String {
+        return AppConfig.currentBaseURL
+    }
     private let keychain = KeychainHelper.shared
     
     private init() {}

@@ -44,14 +44,14 @@ struct expenseApp: App {
                         }
                 }
             }
+            .onOpenURL { url in
+                GIDSignIn.sharedInstance.handle(url)
+            }
+            .onAppear {
+                configureGoogleSignIn()
+            }
         }
         .modelContainer(sharedModelContainer)
-        .onOpenURL { url in
-            GIDSignIn.sharedInstance.handle(url)
-        }
-        .onAppear {
-            configureGoogleSignIn()
-        }
     }
     
     private func configureGoogleSignIn() {
@@ -62,6 +62,13 @@ struct expenseApp: App {
            let plist = NSDictionary(contentsOfFile: path),
            let clientId = plist["CLIENT_ID"] as? String {
             GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: clientId)
+            print("Google Sign-In configured with client ID: \(clientId)")
+        } else {
+            print("Warning: GoogleService-Info.plist not found or invalid")
+            // Fallback to hardcoded client ID if plist is missing
+            let fallbackClientId = "731531538946-bn1kmlt8eian5v5lcvcc2gvugtetsevm.apps.googleusercontent.com"
+            GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: fallbackClientId)
+            print("Using fallback client ID")
         }
     }
 }

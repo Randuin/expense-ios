@@ -1,0 +1,53 @@
+//
+//  expenseApp.swift - Version without Google Sign-In
+//  Use this if Google Sign-In is causing crashes
+//
+//  To use: Rename this to expenseApp.swift and comment out the original
+//
+
+import SwiftUI
+import SwiftData
+// Removed: import GoogleSignIn
+
+@main
+struct expenseApp: App {
+    @State private var showLaunchScreen = true
+    
+    var sharedModelContainer: ModelContainer = {
+        let schema = Schema([
+            Receipt.self,
+        ])
+        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+
+        do {
+            return try ModelContainer(for: schema, configurations: [modelConfiguration])
+        } catch {
+            fatalError("Could not create ModelContainer: \(error)")
+        }
+    }()
+
+    var body: some Scene {
+        WindowGroup {
+            ZStack {
+                // For testing without auth, go directly to MainTabView
+                MainTabView()
+                    .opacity(showLaunchScreen ? 0 : 1)
+                
+                if showLaunchScreen {
+                    LaunchScreenView()
+                        .transition(.opacity)
+                        .onAppear {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                                withAnimation(.easeOut(duration: 0.5)) {
+                                    showLaunchScreen = false
+                                }
+                            }
+                        }
+                }
+            }
+            // Removed: .onOpenURL handler for Google Sign-In
+            // Removed: .onAppear with configureGoogleSignIn
+        }
+        .modelContainer(sharedModelContainer)
+    }
+}
