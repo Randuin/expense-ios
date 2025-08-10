@@ -1,13 +1,22 @@
-# CLAUDE.md
+# CLAUDE.md - Receipt Expense Tracker
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with this iOS receipt/expense tracking app.
+
+## Project Overview
+A comprehensive iOS receipt management and expense tracking app that allows users to:
+- Capture receipts using the device camera
+- Organize expenses by business categories (meals, travel, office supplies, etc.)
+- Track submission status through approval workflow
+- Export receipt data for expense reporting
+- Manage a backlog of unprocessed receipts
 
 ## Tech Stack
-- **Platform**: iOS/macOS app
+- **Platform**: iOS (iPhone/iPad)
 - **Language**: Swift
-- **UI Framework**: SwiftUI
-- **Data Persistence**: SwiftData
-- **Testing Framework**: Swift Testing (new framework, uses `@Test` macro)
+- **UI Framework**: SwiftUI with tab-based navigation
+- **Data Persistence**: SwiftData with Receipt model
+- **Camera**: Native iOS camera integration
+- **Testing Framework**: Swift Testing (uses `@Test` macro)
 - **Build System**: Xcode
 
 ## Common Commands
@@ -17,7 +26,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Build the project
 xcodebuild -project expense.xcodeproj -scheme expense -configuration Debug build
 
-# Run on simulator
+# Run on iPhone simulator
 open -a Simulator
 xcodebuild -project expense.xcodeproj -scheme expense -destination 'platform=iOS Simulator,name=iPhone 16' build
 ```
@@ -38,28 +47,68 @@ xcodebuild clean -project expense.xcodeproj -scheme expense
 
 ## Architecture
 
-### Core Components
-- **expenseApp.swift**: Main app entry point, configures SwiftData ModelContainer
-- **ContentView.swift**: Primary UI view with list of items and navigation
-- **Item.swift**: SwiftData model representing expense items (currently just timestamps)
+### App Structure
+- **expenseApp.swift**: Main app entry point with LaunchScreenView and SwiftData ModelContainer for Receipt model
+- **MainTabView.swift**: Root tab interface with 3 tabs: Capture (camera), Backlog (unprocessed), History (all receipts)
+- **LaunchScreenView.swift**: 2.5-second launch animation with fade transition
+
+### Core Views
+- **CameraView.swift**: Receipt capture interface using device camera
+- **BacklogView.swift**: Lists unprocessed receipts with badge count on tab
+- **ReceiptListView.swift**: Historical view of all receipts with filtering/search
+- **ReceiptEditView.swift**: Form for editing receipt details (amount, merchant, category, notes)
+- **ReceiptDetailView.swift**: Read-only detailed view of individual receipts
+- **BatchExportView.swift**: Bulk export functionality for expense reporting
+
+### Data Models
+- **Receipt.swift**: SwiftData model with comprehensive expense data:
+  - Basic info: amount, merchant, timestamp, imageData
+  - Categorization: ReceiptCategory enum (meals, travel, office, vehicle, utilities, etc.)
+  - Workflow: SubmissionStatus enum (pending, submitted, approved, rejected)
+  - Optional fields: taxAmount, paymentMethod, notes
+  - Processing state: isProcessed boolean for backlog management
+
+### Categories & Status
+- **ReceiptCategory**: 10 business expense categories with SF Symbol icons and colors
+- **SubmissionStatus**: 4-state approval workflow with visual indicators
+- Each category/status has associated icon, color, and formatted display
+
+### Utilities
+- **ExportManager.swift**: Handles bulk export of receipt data (CSV, PDF, etc.)
+- **AppIconExporter.swift**: Development utility for app icon generation
 
 ### Data Layer
-- Uses SwiftData with `@Model` macro for persistence
-- ModelContainer configured in app entry point
-- ModelContext injected via environment
+- Uses SwiftData with Receipt model as primary entity
+- ModelContainer configured in expenseApp.swift
+- @Query with filters for unprocessed receipts in MainTabView
+- ModelContext injected via environment for data operations
 
 ### Testing Structure
 - **expenseTests/**: Unit tests using Swift Testing framework
-- **expenseUITests/**: UI tests for automated interface testing
-- Tests use `@Test` macro (new Swift Testing syntax, not XCTest)
+- **expenseUITests/**: UI tests for tab navigation and receipt workflows
+- Tests use `@Test` macro (Swift Testing, not XCTest)
 
-## Key Development Notes
+## Development Guidelines
 
-When modifying SwiftData models:
-- Changes to `@Model` classes require migration if app is already deployed
-- Use `modelContainer(for:inMemory:)` for preview and test environments
+### Receipt Management
+- New receipts default to .pending status and unprocessed state
+- Camera integration stores image as Data in receipt.imageData
+- Use ReceiptCategory enum for consistent categorization
+- Always update submission dates when changing status
 
-SwiftUI view updates:
-- Views using `@Query` automatically refresh when data changes
-- Use `@Environment(\.modelContext)` to access data context
-- Wrap data modifications in `withAnimation` for smooth UI transitions
+### SwiftData Best Practices
+- Receipt model changes require migration planning
+- Use @Query with predicates for filtered views (e.g., unprocessed receipts)
+- Wrap data modifications in withAnimation for smooth UI transitions
+- Use modelContainer(for:inMemory:) for preview/test environments
+
+### UI Patterns
+- Tab badges show unprocessed receipt count
+- SF Symbols used consistently for categories and status
+- Color coding matches category/status enums
+- Navigation stack used for History tab to support detail views
+
+### Camera Integration
+- Capture receipt images directly to Receipt.imageData
+- Handle camera permissions and availability
+- Optimize image size for storage while maintaining readability

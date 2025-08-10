@@ -11,16 +11,43 @@ import SwiftData
 struct ReceiptEditView: View {
     let image: UIImage
     let modelContext: ModelContext
+    var receipt: Receipt?  // Optional - if provided, we're editing an existing receipt
     var onSave: () -> Void
     
-    @State private var merchant = ""
-    @State private var amount = ""
-    @State private var taxAmount = ""
-    @State private var category: ReceiptCategory = .other
-    @State private var notes = ""
-    @State private var paymentMethod = ""
-    @State private var date = Date()
+    @State private var merchant: String
+    @State private var amount: String
+    @State private var taxAmount: String
+    @State private var category: ReceiptCategory
+    @State private var notes: String
+    @State private var paymentMethod: String
+    @State private var date: Date
     @State private var showingDatePicker = false
+    
+    init(image: UIImage, modelContext: ModelContext, receipt: Receipt? = nil, onSave: @escaping () -> Void) {
+        self.image = image
+        self.modelContext = modelContext
+        self.receipt = receipt
+        self.onSave = onSave
+        
+        // Initialize state based on whether we're editing or creating
+        if let receipt = receipt {
+            _merchant = State(initialValue: receipt.merchant)
+            _amount = State(initialValue: receipt.amount > 0 ? String(format: "%.2f", receipt.amount) : "")
+            _taxAmount = State(initialValue: receipt.taxAmount != nil ? String(format: "%.2f", receipt.taxAmount!) : "")
+            _category = State(initialValue: receipt.category)
+            _notes = State(initialValue: receipt.notes)
+            _paymentMethod = State(initialValue: receipt.paymentMethod ?? "")
+            _date = State(initialValue: receipt.timestamp)
+        } else {
+            _merchant = State(initialValue: "")
+            _amount = State(initialValue: "")
+            _taxAmount = State(initialValue: "")
+            _category = State(initialValue: .other)
+            _notes = State(initialValue: "")
+            _paymentMethod = State(initialValue: "")
+            _date = State(initialValue: Date())
+        }
+    }
     
     @Environment(\.dismiss) private var dismiss
     @FocusState private var focusedField: Field?
@@ -211,18 +238,31 @@ struct ReceiptEditView: View {
         let amountValue = Double(amount) ?? 0.0
         let taxValue = taxAmount.isEmpty ? nil : Double(taxAmount)
         
-        let receipt = Receipt(
-            timestamp: date,
-            imageData: image.jpegData(compressionQuality: 0.8),
-            amount: amountValue,
-            merchant: merchant,
-            category: category,
-            notes: notes,
-            taxAmount: taxValue,
-            paymentMethod: paymentMethod.isEmpty ? nil : paymentMethod
-        )
-        
-        modelContext.insert(receipt)
+        if let existingReceipt = receipt {
+            // Update existing receipt
+            existingReceipt.merchant = merchant
+            existingReceipt.amount = amountValue
+            existingReceipt.category = category
+            existingReceipt.notes = notes
+            existingReceipt.taxAmount = taxValue
+            existingReceipt.paymentMethod = paymentMethod.isEmpty ? nil : paymentMethod
+            existingReceipt.timestamp = date
+            existingReceipt.isProcessed = true
+        } else {
+            // Create new receipt
+            let newReceipt = Receipt(
+                timestamp: date,
+                imageData: image.jpegData(compressionQuality: 0.8),
+                amount: amountValue,
+                merchant: merchant,
+                category: category,
+                notes: notes,
+                taxAmount: taxValue,
+                paymentMethod: paymentMethod.isEmpty ? nil : paymentMethod,
+                isProcessed: true
+            )
+            modelContext.insert(newReceipt)
+        }
         
         do {
             try modelContext.save()

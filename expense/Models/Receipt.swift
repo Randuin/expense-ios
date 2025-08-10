@@ -90,6 +90,7 @@ final class Receipt {
     var submissionDate: Date?
     var taxAmount: Double?
     var paymentMethod: String?
+    var isProcessed: Bool
     
     init(
         timestamp: Date = Date(),
@@ -101,7 +102,8 @@ final class Receipt {
         submissionStatus: SubmissionStatus = .pending,
         submissionDate: Date? = nil,
         taxAmount: Double? = nil,
-        paymentMethod: String? = nil
+        paymentMethod: String? = nil,
+        isProcessed: Bool = false
     ) {
         self.id = UUID()
         self.timestamp = timestamp
@@ -114,6 +116,7 @@ final class Receipt {
         self.submissionDate = submissionDate
         self.taxAmount = taxAmount
         self.paymentMethod = paymentMethod
+        self.isProcessed = isProcessed
     }
     
     var formattedAmount: String {

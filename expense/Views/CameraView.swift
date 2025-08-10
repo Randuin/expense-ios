@@ -8,14 +8,30 @@
 import SwiftUI
 import AVFoundation
 import PhotosUI
+import SwiftData
 
 struct CameraView: View {
     @StateObject private var viewModel = CameraViewModel()
+    @StateObject private var syncManager = SyncManager()
+    @EnvironmentObject private var authManager: AuthManager
     @Environment(\.modelContext) private var modelContext
+    @Query(filter: #Predicate<Receipt> { !$0.isProcessed }) private var unprocessedReceipts: [Receipt]
     @State private var capturedImage: UIImage?
-    @State private var showingReceiptEdit = false
-    @State private var showingImagePicker = false
+    @State private var activeSheet: ActiveSheet?
     @State private var flashMode: AVCaptureDevice.FlashMode = .auto
+    @State private var showSuccessFeedback = false
+    
+    enum ActiveSheet: Identifiable {
+        case receiptEdit
+        case imagePicker
+        
+        var id: Int {
+            switch self {
+            case .receiptEdit: return 1
+            case .imagePicker: return 2
+            }
+        }
+    }
     
     var body: some View {
         ZStack {
@@ -72,33 +88,58 @@ struct CameraView: View {
                     .progressViewStyle(CircularProgressViewStyle(tint: .white))
                     .scaleEffect(1.5)
             }
+            
+            // Success feedback overlay
+            if showSuccessFeedback {
+                VStack {
+                    Spacer()
+                    HStack {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.title)
+                            .foregroundColor(.green)
+                        Text("Photo saved to backlog")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                    }
+                    .padding()
+                    .background(Color.black.opacity(0.8))
+                    .cornerRadius(12)
+                    .padding(.bottom, 100)
+                }
+                .transition(.scale.combined(with: .opacity))
+            }
         }
         .onAppear {
             viewModel.checkPermissions()
+            syncManager.setModelContext(modelContext)
         }
         .onDisappear {
             viewModel.stopSession()
         }
-        .sheet(isPresented: $showingReceiptEdit, onDismiss: {
-            viewModel.startSession()
-        }) {
-            if let image = capturedImage {
-                NavigationStack {
-                    ReceiptEditView(image: image, modelContext: modelContext) {
-                        capturedImage = nil
-                        showingReceiptEdit = false
+        .sheet(item: $activeSheet) { sheet in
+            switch sheet {
+            case .receiptEdit:
+                if let image = capturedImage {
+                    NavigationStack {
+                        ReceiptEditView(image: image, modelContext: modelContext) {
+                            capturedImage = nil
+                            activeSheet = nil
+                        }
+                    }
+                    .onDisappear {
+                        viewModel.startSession()
+                    }
+                }
+            case .imagePicker:
+                ImagePicker(image: $capturedImage, onImagePicked: {
+                    activeSheet = .receiptEdit
+                })
+                .onDisappear {
+                    if capturedImage == nil {
+                        viewModel.startSession()
                     }
                 }
             }
-        }
-        .sheet(isPresented: $showingImagePicker, onDismiss: {
-            if capturedImage == nil {
-                viewModel.startSession()
-            }
-        }) {
-            ImagePicker(image: $capturedImage, onImagePicked: {
-                showingReceiptEdit = true
-            })
         }
         .alert("Camera Permission Required", isPresented: $viewModel.showPermissionAlert) {
             Button("Open Settings") {
@@ -126,13 +167,20 @@ struct CameraView: View {
             
             Spacer()
             
-            Text("Capture Receipt")
-                .font(.headline)
-                .foregroundColor(.white)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 10)
-                .background(Color.black.opacity(0.5))
-                .clipShape(Capsule())
+            VStack(spacing: 4) {
+                Text("Capture Receipt")
+                    .font(.headline)
+                    .foregroundColor(.white)
+                if unprocessedReceipts.count > 0 {
+                    Text("\(unprocessedReceipts.count) in backlog")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.8))
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 10)
+            .background(Color.black.opacity(0.5))
+            .clipShape(Capsule())
             
             Spacer()
             
@@ -151,7 +199,7 @@ struct CameraView: View {
     
     private var captureControls: some View {
         HStack(spacing: 50) {
-            Button(action: { showingImagePicker = true }) {
+            Button(action: { activeSheet = .imagePicker }) {
                 Image(systemName: "photo.on.rectangle")
                     .font(.title)
                     .foregroundColor(.white)
@@ -207,8 +255,42 @@ struct CameraView: View {
     
     private func capturePhoto() {
         viewModel.capturePhoto { image in
-            capturedImage = image
-            showingReceiptEdit = true
+            saveToBacklog(image: image)
+        }
+    }
+    
+    private func saveToBacklog(image: UIImage?) {
+        guard let image = image else { return }
+        
+        let receipt = Receipt(
+            timestamp: Date(),
+            imageData: image.jpegData(compressionQuality: 0.8),
+            isProcessed: false
+        )
+        
+        modelContext.insert(receipt)
+        
+        do {
+            try modelContext.save()
+            withAnimation(.spring()) {
+                showSuccessFeedback = true
+            }
+            
+            // Upload to backend if authenticated
+            if authManager.isAuthenticated {
+                Task {
+                    await syncManager.uploadReceipt(receipt)
+                }
+            }
+            
+            // Hide success feedback after 2 seconds
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                withAnimation {
+                    showSuccessFeedback = false
+                }
+            }
+        } catch {
+            print("Failed to save receipt to backlog: \(error)")
         }
     }
 }

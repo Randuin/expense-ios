@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import GoogleSignIn
 
 @main
 struct expenseApp: App {
@@ -28,7 +29,7 @@ struct expenseApp: App {
     var body: some Scene {
         WindowGroup {
             ZStack {
-                MainTabView()
+                AuthenticatedMainView()
                     .opacity(showLaunchScreen ? 0 : 1)
                 
                 if showLaunchScreen {
@@ -45,5 +46,22 @@ struct expenseApp: App {
             }
         }
         .modelContainer(sharedModelContainer)
+        .onOpenURL { url in
+            GIDSignIn.sharedInstance.handle(url)
+        }
+        .onAppear {
+            configureGoogleSignIn()
+        }
+    }
+    
+    private func configureGoogleSignIn() {
+        // Configure Google Sign-In
+        // Note: You'll need to add GoogleService-Info.plist to your project
+        // and configure the OAuth client ID there
+        if let path = Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist"),
+           let plist = NSDictionary(contentsOfFile: path),
+           let clientId = plist["CLIENT_ID"] as? String {
+            GIDSignIn.sharedInstance.configuration = GIDConfiguration(clientID: clientId)
+        }
     }
 }

@@ -10,7 +10,7 @@ import SwiftData
 
 struct ReceiptListView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query(sort: \Receipt.timestamp, order: .reverse) private var receipts: [Receipt]
+    @Query(sort: \Receipt.timestamp, order: .reverse) private var allReceipts: [Receipt]
     
     @State private var searchText = ""
     @State private var selectedCategory: ReceiptCategory?
@@ -19,6 +19,11 @@ struct ReceiptListView: View {
     @State private var selectedReceipt: Receipt?
     @State private var showingBatchExport = false
     @State private var showingIconExporter = false
+    @State private var showUnprocessed = false
+    
+    private var receipts: [Receipt] {
+        allReceipts.filter { showUnprocessed || $0.isProcessed }
+    }
     
     var filteredReceipts: [Receipt] {
         receipts.filter { receipt in
@@ -113,7 +118,8 @@ struct ReceiptListView: View {
             NavigationStack {
                 FilterView(
                     selectedCategory: $selectedCategory,
-                    selectedStatus: $selectedStatus
+                    selectedStatus: $selectedStatus,
+                    showUnprocessed: $showUnprocessed
                 )
             }
         }
@@ -228,27 +234,40 @@ struct ReceiptRowView: View {
     
     var body: some View {
         HStack(spacing: 12) {
-            if let imageData = receipt.imageData,
-               let image = UIImage(data: imageData) {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 60, height: 60)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-            } else {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.gray.opacity(0.2))
-                    .frame(width: 60, height: 60)
-                    .overlay(
-                        Image(systemName: "photo")
-                            .foregroundColor(.gray)
-                    )
+            ZStack(alignment: .topLeading) {
+                if let imageData = receipt.imageData,
+                   let image = UIImage(data: imageData) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 60, height: 60)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                } else {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.gray.opacity(0.2))
+                        .frame(width: 60, height: 60)
+                        .overlay(
+                            Image(systemName: "photo")
+                                .foregroundColor(.gray)
+                        )
+                }
+                
+                if !receipt.isProcessed {
+                    Image(systemName: "exclamationmark.circle.fill")
+                        .font(.caption2)
+                        .foregroundColor(.orange)
+                        .background(Circle().fill(Color.white).padding(-2))
+                        .offset(x: -4, y: -4)
+                }
             }
             
             VStack(alignment: .leading, spacing: 4) {
-                Text(receipt.merchant)
-                    .font(.headline)
-                    .lineLimit(1)
+                HStack {
+                    Text(receipt.merchant.isEmpty && !receipt.isProcessed ? "Unprocessed" : receipt.merchant)
+                        .font(.headline)
+                        .lineLimit(1)
+                        .foregroundColor(receipt.merchant.isEmpty && !receipt.isProcessed ? .secondary : .primary)
+                }
                 
                 HStack {
                     Label(receipt.category.rawValue, systemImage: receipt.category.icon)
@@ -282,10 +301,15 @@ struct ReceiptRowView: View {
 struct FilterView: View {
     @Binding var selectedCategory: ReceiptCategory?
     @Binding var selectedStatus: SubmissionStatus?
+    @Binding var showUnprocessed: Bool
     @Environment(\.dismiss) private var dismiss
     
     var body: some View {
         Form {
+            Section("Display Options") {
+                Toggle("Show Unprocessed Receipts", isOn: $showUnprocessed)
+            }
+            
             Section("Category") {
                 ForEach([nil] + ReceiptCategory.allCases.map { $0 as ReceiptCategory? }, id: \.self) { category in
                     HStack {
@@ -341,6 +365,7 @@ struct FilterView: View {
                 Button("Clear") {
                     selectedCategory = nil
                     selectedStatus = nil
+                    showUnprocessed = false
                 }
             }
             ToolbarItem(placement: .navigationBarTrailing) {
