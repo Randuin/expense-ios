@@ -50,6 +50,80 @@ enum ReceiptCategory: String, CaseIterable, Codable {
         case .other: return .gray
         }
     }
+    
+    /// Tax deductibility percentage (0.0 to 1.0)
+    var taxDeductiblePercentage: Double {
+        switch self {
+        case .meals: return 0.5 // 50% deductible for business meals
+        case .travel: return 1.0 // 100% deductible for business travel
+        case .office: return 1.0 // 100% deductible for office supplies
+        case .vehicle: return 1.0 // 100% deductible (varies by method - actual vs. standard mileage)
+        case .utilities: return 1.0 // 100% deductible for business utilities
+        case .professional: return 1.0 // 100% deductible for professional services
+        case .advertising: return 1.0 // 100% deductible for advertising
+        case .insurance: return 1.0 // 100% deductible for business insurance
+        case .equipment: return 1.0 // 100% deductible or depreciable
+        case .other: return 1.0 // Assume 100%, user should verify
+        }
+    }
+    
+    /// IRS Schedule C line item mapping for sole proprietors
+    var scheduleCAteory: String {
+        switch self {
+        case .meals: return "Line 24b - Meals (50% limit)"
+        case .travel: return "Line 24a - Travel"
+        case .office: return "Line 22 - Supplies"
+        case .vehicle: return "Line 9 - Car and truck expenses"
+        case .utilities: return "Line 25 - Utilities"
+        case .professional: return "Line 17 - Legal and professional services"
+        case .advertising: return "Line 8 - Advertising"
+        case .insurance: return "Line 15 - Insurance (other than health)"
+        case .equipment: return "Line 13 - Depreciation (Form 4562)"
+        case .other: return "Line 27a - Other business expenses"
+        }
+    }
+    
+    /// Common QuickBooks expense account mapping
+    var quickBooksAccount: String {
+        switch self {
+        case .meals: return "Meals and Entertainment"
+        case .travel: return "Travel Expense"
+        case .office: return "Office Supplies"
+        case .vehicle: return "Auto Expense"
+        case .utilities: return "Utilities"
+        case .professional: return "Professional Services"
+        case .advertising: return "Advertising and Promotion"
+        case .insurance: return "Insurance Expense"
+        case .equipment: return "Equipment"
+        case .other: return "Miscellaneous Expense"
+        }
+    }
+    
+    /// Tax guidance for users
+    var taxGuidance: String {
+        switch self {
+        case .meals: 
+            return "Business meals are 50% deductible. Must be ordinary and necessary for your business."
+        case .travel: 
+            return "100% deductible when traveling away from home for business purposes."
+        case .office: 
+            return "Office supplies and materials used in your business are 100% deductible."
+        case .vehicle: 
+            return "Use actual expenses or standard mileage rate. Keep detailed records."
+        case .utilities: 
+            return "100% deductible for dedicated business space or proportional for home office."
+        case .professional: 
+            return "Legal, accounting, and consulting fees are 100% deductible."
+        case .advertising: 
+            return "Marketing and advertising expenses are 100% deductible."
+        case .insurance: 
+            return "Business insurance premiums are 100% deductible."
+        case .equipment: 
+            return "May be 100% deductible under Section 179 or depreciated over time."
+        case .other: 
+            return "Must be ordinary and necessary for your business. Consult tax professional."
+        }
+    }
 }
 
 enum SubmissionStatus: String, CaseIterable, Codable {
@@ -131,5 +205,42 @@ final class Receipt {
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
         return formatter.string(from: timestamp)
+    }
+    
+    /// Calculate tax-deductible amount based on category rules
+    var taxDeductibleAmount: Double {
+        return amount * category.taxDeductiblePercentage
+    }
+    
+    /// Formatted tax-deductible amount
+    var formattedTaxDeductibleAmount: String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.locale = Locale.current
+        return formatter.string(from: NSNumber(value: taxDeductibleAmount)) ?? "$0.00"
+    }
+    
+    /// Check if this receipt is fully tax deductible
+    var isFullyDeductible: Bool {
+        return category.taxDeductiblePercentage >= 1.0
+    }
+    
+    /// Get the tax year for this receipt
+    var taxYear: Int {
+        return Calendar.current.component(.year, from: timestamp)
+    }
+    
+    /// Format receipt for QuickBooks import
+    var quickBooksExportString: String {
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "MM/dd/yyyy"
+        
+        return [
+            dateFormatter.string(from: timestamp),
+            category.quickBooksAccount,
+            merchant.isEmpty ? "Unknown Vendor" : merchant,
+            String(format: "%.2f", amount),
+            notes.isEmpty ? category.rawValue : notes
+        ].joined(separator: ",")
     }
 }

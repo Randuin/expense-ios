@@ -8,6 +8,7 @@
 import SwiftUI
 import SwiftData
 import GoogleSignIn
+import AppIntents
 
 @main
 struct expenseApp: App {
@@ -49,6 +50,21 @@ struct expenseApp: App {
             }
             .onAppear {
                 configureGoogleSignIn()
+                if #available(iOS 16.0, *) {
+                    ExpenseAppShortcuts.updateAppShortcutParameters()
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
+                // App going to background
+                Task {
+                    // Let SyncManager handle background state
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+                // App became active
+                Task {
+                    // Let SyncManager handle active state
+                }
             }
         }
         .modelContainer(sharedModelContainer)

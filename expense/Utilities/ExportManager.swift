@@ -141,6 +141,14 @@ class ExportManager {
         return nil
     }
     
+    
+    
+    private func formatDateForFilename(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd_HHmm"
+        return formatter.string(from: date)
+    }
+    
     func saveToFile(content: String, filename: String) -> URL? {
         let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
         

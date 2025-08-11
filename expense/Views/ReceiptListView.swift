@@ -11,6 +11,8 @@ import SwiftData
 struct ReceiptListView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Receipt.timestamp, order: .reverse) private var allReceipts: [Receipt]
+    @EnvironmentObject private var syncManager: SyncManager
+    @EnvironmentObject private var authManager: AuthManager
     
     @State private var searchText = ""
     @State private var selectedCategory: ReceiptCategory?
@@ -20,9 +22,16 @@ struct ReceiptListView: View {
     @State private var showingBatchExport = false
     @State private var showingIconExporter = false
     @State private var showUnprocessed = false
+    @State private var isRefreshing = false
     
     private var receipts: [Receipt] {
-        allReceipts.filter { showUnprocessed || $0.isProcessed }
+        // History tab should show all receipts by default
+        // The showUnprocessed toggle now controls whether to show ONLY unprocessed
+        if showUnprocessed {
+            return allReceipts.filter { !$0.isProcessed }
+        } else {
+            return allReceipts // Show all receipts
+        }
     }
     
     var filteredReceipts: [Receipt] {
@@ -54,11 +63,25 @@ struct ReceiptListView: View {
     
     var body: some View {
         VStack(spacing: 0) {
+            // Sync status bar
+            if syncManager.isSyncing || isRefreshing {
+                HStack {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                    Text("Syncing with server...")
+                        .font(.caption)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Color.blue.opacity(0.1))
+                .foregroundColor(.blue)
+            }
+            
             if !receipts.isEmpty {
                 summaryHeader
             }
             
-            if receipts.isEmpty {
+            if receipts.isEmpty && !syncManager.isSyncing && !isRefreshing {
                 emptyState
             } else {
                 List {
@@ -92,10 +115,24 @@ struct ReceiptListView: View {
                     }
                 }
                 .searchable(text: $searchText, prompt: "Search receipts...")
+                .refreshable {
+                    await refreshFromServer()
+                }
             }
         }
-        .navigationTitle("Receipt History")
+        .navigationTitle("Receipts")
         .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button(action: {
+                    Task {
+                        await refreshFromServer()
+                    }
+                }) {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .disabled(syncManager.isSyncing || isRefreshing)
+            }
+            
             ToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
                     Button(action: { showingFilters.toggle() }) {
@@ -105,12 +142,30 @@ struct ReceiptListView: View {
                     Button(action: { showingBatchExport.toggle() }) {
                         Label("Export", systemImage: "square.and.arrow.up")
                     }
+                    Button(action: {
+                        Task {
+                            await refreshFromServer()
+                        }
+                    }) {
+                        Label("Refresh from Server", systemImage: "icloud.and.arrow.down")
+                    }
+                    .disabled(syncManager.isSyncing || isRefreshing)
                     Divider()
                     Button(action: { showingIconExporter.toggle() }) {
                         Label("App Icon", systemImage: "app.badge")
                     }
                 } label: {
                     Image(systemName: "ellipsis.circle")
+                }
+            }
+        }
+        .onAppear {
+            syncManager.setModelContext(modelContext)
+            
+            // Automatically refresh from server when History tab is opened
+            if authManager.isAuthenticated {
+                Task {
+                    await refreshFromServer()
                 }
             }
         }
@@ -185,19 +240,43 @@ struct ReceiptListView: View {
     
     private var emptyState: some View {
         VStack(spacing: 20) {
-            Image(systemName: "camera.on.rectangle")
-                .font(.system(size: 60))
-                .foregroundColor(.gray)
-            
-            Text("No Receipts Yet")
-                .font(.title2)
-                .fontWeight(.semibold)
-            
-            Text("Tap the camera tab to capture your first receipt")
-                .font(.body)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
+            if authManager.isAuthenticated {
+                Image(systemName: "icloud.and.arrow.down")
+                    .font(.system(size: 60))
+                    .foregroundColor(.gray)
+                
+                Text("No Receipts Found")
+                    .font(.title2)
+                    .fontWeight(.semibold)
+                
+                Text("Your receipts will appear here once you capture them. Data is synced from the server.")
+                    .font(.body)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 40)
+                
+                Button("Refresh from Server") {
+                    Task {
+                        await refreshFromServer()
+                    }
+                }
+                .buttonStyle(.bordered)
+                .disabled(syncManager.isSyncing || isRefreshing)
+            } else {
+                Image(systemName: "person.crop.circle.badge.exclamationmark")
+                    .font(.system(size: 60))
+                    .foregroundColor(.gray)
+                
+                Text("Sign In Required")
+                    .font(.title2)
+                    .fontWeight(.semibold)
+                
+                Text("Sign in to view your receipt history")
+                    .font(.body)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 40)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -226,6 +305,16 @@ struct ReceiptListView: View {
             receipt.submissionDate = Date()
             try? modelContext.save()
         }
+    }
+    
+    @MainActor
+    private func refreshFromServer() async {
+        guard authManager.isAuthenticated, !isRefreshing else { return }
+        
+        isRefreshing = true
+        defer { isRefreshing = false }
+        
+        await syncManager.downloadAndOverwriteReceipts()
     }
 }
 
@@ -307,7 +396,7 @@ struct FilterView: View {
     var body: some View {
         Form {
             Section("Display Options") {
-                Toggle("Show Unprocessed Receipts", isOn: $showUnprocessed)
+                Toggle("Show Only Unprocessed", isOn: $showUnprocessed)
             }
             
             Section("Category") {

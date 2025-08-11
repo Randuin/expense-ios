@@ -3,10 +3,83 @@ import SwiftUI
 struct SettingsView: View {
     @AppStorage("useLocalhost") private var useLocalhost = false
     @State private var showingRestartAlert = false
+    @EnvironmentObject private var syncManager: SyncManager
+    @State private var isManualSyncing = false
     
     var body: some View {
         NavigationView {
             Form {
+                Section("Sync & Storage") {
+                    HStack {
+                        Text("Upload Queue")
+                        Spacer()
+                        if syncManager.backgroundUploadCount > 0 {
+                            HStack {
+                                Text("\(syncManager.backgroundUploadCount)")
+                                    .foregroundColor(.orange)
+                                Image(systemName: "icloud.and.arrow.up")
+                                    .foregroundColor(.orange)
+                            }
+                        } else {
+                            Text("All synced")
+                                .foregroundColor(.green)
+                        }
+                    }
+                    
+                    HStack {
+                        Text("Sync Status")
+                        Spacer()
+                        if syncManager.isSyncing {
+                            HStack {
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                                Text("Syncing...")
+                                    .foregroundColor(.blue)
+                            }
+                        } else if let error = syncManager.syncError {
+                            Text("Failed")
+                                .foregroundColor(.red)
+                        } else {
+                            Text("Ready")
+                                .foregroundColor(.green)
+                        }
+                    }
+                    
+                    Button(action: {
+                        Task {
+                            isManualSyncing = true
+                            await syncManager.retryFailedUploads()
+                            isManualSyncing = false
+                        }
+                    }) {
+                        HStack {
+                            Image(systemName: "arrow.clockwise")
+                            Text("Sync Now")
+                        }
+                    }
+                    .disabled(syncManager.isSyncing || isManualSyncing)
+                    
+                    if syncManager.backgroundUploadCount > 0 {
+                        Button(action: {
+                            syncManager.clearUploadQueue()
+                        }) {
+                            HStack {
+                                Image(systemName: "trash")
+                                    .foregroundColor(.red)
+                                Text("Clear Upload Queue")
+                                    .foregroundColor(.red)
+                            }
+                        }
+                    }
+                    
+                    if let error = syncManager.syncError {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundColor(.red)
+                            .lineLimit(2)
+                    }
+                }
+                
                 Section("API Configuration") {
                     HStack {
                         Text("Environment")
